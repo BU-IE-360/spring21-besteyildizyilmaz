@@ -3,6 +3,6 @@
 [Here](files/BesteYıldızYılmaz_HW0.html) is my five interesting forecasting applications.
 
 ## Homework 1 
-[Here](files/BesteYıldızYılmaz_HW1.html) is my five interesting forecasting applications.
+[Here](files/BesteYıldızYılmaz_HW1.html) is my "Data Visualization & Google Trends Analysis on Data Series from Turkey".
 
 
