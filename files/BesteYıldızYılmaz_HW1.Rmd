@@ -1,0 +1,266 @@
+
+#   Data Visualization & Google Trends Analysis on Data Series from Turkey
+#### _Beste Yıldız Yılmaz - IE360- Spring21 _
+  
+## Example 1: Monthly Unemployment Rate in Turkey between 2014-2021
+  Nowadays, unemployment is still one of the most crucial problems in almost all countries in the world. Since this macroeconomic term is world-wide reality, the developed countries as well as the developing and the under-developed countries suffer from it. The level of unemployment rate affects people most directly and severely. Loss of a job can be defined shortly as having insufficient living standards and psychological problems. Economists focus on unemployment in order to find the underlying reasons and they try to address this macroeconomic term with a scientific perspective.
+
+  It is obvious that stability and foreseeability are very important concepts in economy. To figure out what's going on in a country's economy, it is necessary to analyze some important concepts such as unemployment rate.
+
+  All data used in this report is from [Central Bank of Turkey’s Data Center](https://evds2.tcmb.gov.tr/index.php?/evds/serieMarket) and [Google Trends](https://trends.google.com/trends/?geo=TR) which is a website by Google that analyzes popularity of top search queries in Google Search.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+#libraries
+
+library(EVDS)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+
+devtools::install_github("algopoly/EVDS",force = TRUE)
+set_evds_key("ybuNa4VurE")
+dl <- get_series(series = c("TP.YISGUCU2.G8","TP.ODEMGZS.RUSYA","TP.AKONUTSAT1.TOPLAM"),start_date = "01-01-2014", end_date = "01-01-2021")
+evds_data=dl$items
+Date=evds_data$Tarih
+RussianTourist=evds_data$TP_ODEMGZS_RUSYA
+HouseSales=evds_data$TP_AKONUTSAT1_TOPLAM
+UnemploymentRate=evds_data$TP_YISGUCU2_G8
+Dataframe=data.frame(Date=Date,RussianTourist=RussianTourist,HouseSales=HouseSales,UnemploymentRate=UnemploymentRate)
+Dataframe$Date=paste(Dataframe$Date,"-15")
+Dataframe$Year=format(as.Date(Dataframe[,1],format="%Y-%m -%d"),"%Y")
+Dataframe$Month = format(as.Date(Dataframe[,1],format="%Y-%m -%d"),"%m")
+Dataframe$Date= format(as.Date(Dataframe[,1],format="%Y-%m -%d"),"%Y-%m-%d")
+Dataframe$Year=as.integer(Dataframe$Year)
+Dataframe$Month=as.integer(Dataframe$Month)
+Dataframe$RussianTourist=as.integer(Dataframe$RussianTourist)
+Dataframe$UnemploymentRate=as.numeric(Dataframe$UnemploymentRate)
+Dataframe$HouseSales=as.integer(Dataframe$HouseSales)
+Dataframe$Date=as.Date(Dataframe$Date)
+Dataframe1 = data.frame(Date=Dataframe$Date,UnemploymentRate=UnemploymentRate)
+Dataframe2= data.frame(Date=Dataframe$Date,RussianTourist=RussianTourist)
+Dataframe3= data.frame(Date=Dataframe$Date,HouseSales=HouseSales)
+```
+
+  After necessary manipulation, first five observations in 2014 with column names "Date" & "UnemploymentRate" can be seen as:
+  
+```{r head1}
+head(Dataframe1,5)
+
+```
+### Plot of Monthly Unemployment Rate in Turkey between 2014-2021 
+
+```{r lineplot1, echo=FALSE}
+
+ggplot(Dataframe, aes(x=Date, y=UnemploymentRate)) +
+  geom_line(color = "black", size = 1, aes(group=1),linetype="solid") +
+  labs(x = "Date",
+       y = "Rate (%)") +
+  scale_x_date(date_breaks = "6 months") +
+ theme(axis.text.x = element_text(angle = 60,vjust=1,hjust=1,color="black")) +
+  theme(axis.text.y = element_text(angle = 0,vjust=1,hjust=1,color="black")) +
+  labs(title = "Unemployment Rate in Turkey", subtitle = "Between 2014-2021 counted Monthly") +
+  theme(panel.background = element_rect(fill = "lavender"))
+
+
+
+```
+  
+  The line plot above is an example of one of the most important macroeconomic terms in Turkey between 2014-2021. After roughly looking at this plot, we see a circular pattern that repeats every year. In addition to seasonality, it is a well known fact that inability to create employment for the growing population is one of Turkey's biggest problems. That is there is also an increasing trend as well.
+  The high unemployment rate in the first months of the year (January and February) falls in May, June and July in our country. Agriculture in Turkey represents almost a quarter of total workforce, which is a huge rate compared to other countries in the world. Seasonal workers, increasing during the harvest period in summer months, may be the most important reason for this pattern. Also, hotels fire people which they hire in summer towards the end of the year due to end of hotel season. This execution results in a high population of unemployed during the last months of current year and first months of coming year.
+  
+  A strong increase that started in mid-2018 and continued through the first months of 2019 is a striking point on the plot above. The currency shock in August of 2018 was accompanied by the mass layoffs of the factories. This caused a jump in the unemployment rate. Other reasons for the increasing and unstoppable unemployment rate may be the problems in the labor market, education and tax system of Turkey. 
+ Furthermore, Covid-19 has changed the dynamics of unemployment, as in other areas. It seems that unemployment has been very high in the last year with fluctuations. This crucial macroeconomic model in Turkey might gain completely different features unless necessary regulations are made from government.
+
+
+### Comparison of Search Volume of "İş İlanı" in Turkey with Unemployment Rate in Turkey
+
+ 
+```{r is ilanı, echo=FALSE}
+
+
+issizlik= read.csv("issizlik.csv")
+date= Dataframe$Date
+trend=issizlik[-1,]
+googletrendtable= data.frame(date,trend)
+newgoogle= data.frame(googletrendtable,Dataframe$UnemploymentRate)
+newgoogle$trend= as.numeric(newgoogle$trend)
+newgoogle$trend= newgoogle$trend/4.5
+
+dk <- newgoogle %>%
+  select(date, trend, Dataframe.UnemploymentRate) %>%
+  gather(key = "Categories", value = "Scale", -date)
+
+
+ggplot(dk, aes(x = date, y = Scale)) + 
+  geom_line(aes(color = Categories), size = 1) +
+  scale_color_manual(values = c("light steel blue", "rosy brown")) +
+  theme_minimal()
+
+
+
+
+```
+
+In this example, the words chosen from Google Trends are "İş İlanı", which seem to be convenient words with unemployment rate in Turkey. By looking at the the line plot of the search volume and the data above, it can be said roughly that these are related to each other.
+Even though there are many similar movements in time series data, there are some discrepancies as well such as spring of 2020. This period coincides with the first months of the pandemic and this significant decline is likely due to the dominance of human health concerns over economic problems. Later, the rise again, which is very similar to this decline, may be due to overcoming the shock and facing the realities of the pandemic.
+
+
+## Example 2: Monthly Number of Russian Tourists visiting Turkey between 2014-2021
+  Turkey is one of the most beautiful countries which attracts tourists coming from everywhere. This modern country where all seasons live together hosts more and more tourists day by day. When we examine Turkey's tourism statistics, it is obvious that majority of foreign people visiting to Turkey are Russians. Hence, it is a good idea to examine the number of Russians visiting Turkey to gain insight about Turkey's tourism.
+  
+  After necessary manipulation, first five observations in 2014 with column names "Date" & "RussianTourist" can be seen as:
+
+```{r head2, echo=FALSE}
+head(Dataframe2,5)
+```
+
+### Plot of Monthly Number of Russian Tourists visiting Turkey between 2014-2021 
+
+
+```{r lineplot2, echo=FALSE}
+
+ggplot(Dataframe, aes(x=Date, y=RussianTourist)) +
+  geom_line(color = "black", size = 1, aes(group=1),linetype="solid") +
+  labs(x = "Date",
+       y = "Tourists") +
+  scale_x_date(date_breaks = "6 months") +
+ theme(axis.text.x = element_text(angle = 60,vjust=1,hjust=1,color="black")) +
+  theme(axis.text.y = element_text(angle = 0,vjust=1,hjust=1,color="black")) +
+  labs(title = "Number of Russians Visited to Turkey", subtitle = "Between 2014-2021 counted Monthly") +
+  theme(panel.background = element_rect(fill = "light steel blue"))
+
+
+```
+  
+  The line plot indicates that seasonality is very dominant in the tourist data. In summers, there is a huge Russian population in Turkey but the size of that population decreases considerably in other seasons, especially in winters. That is the indicator of a yearly cyclical pattern. 
+    From another point of view, this cyclical pattern of Russian tourists can be explained by the warming of the weather during the summer months. Turkey's coastline is the main place of their choice for a summer vacation. Warm weather, clean sea and an affordable holiday meet their expectations. In addition, Turkey is preferred by many Russian tourists because it is conducive to football and golf practices especially in Antalya. As an example, the plot below shows the monthly tourist number by months in 2018, which matchs up with what we discuss.
+    
+```{r lineplot22, echo=FALSE, warning=FALSE}
+    ggplot(Dataframe[c(49:60),], aes(x=Date, y=RussianTourist)) +
+  geom_line(color = "black", size = 1, aes(group=1),linetype="solid") +
+  labs(x = "Date",
+       y = "Tourists") +
+  scale_x_date(date_breaks = "1 months") +
+ theme(axis.text.x = element_text(angle = 60,vjust=1,hjust=1,color="black")) +
+  theme(axis.text.y = element_text(angle = 0,vjust=1,hjust=1,color="black")) +
+  labs(title = "Number of Russians Visited to Turkey in 2018") +
+  theme(panel.background = element_rect(fill = "light steel blue"))
+    
+    ```
+    
+  It is obvious that there is an increasing trend in this time series data. As time goes by, the beauty of our country becomes known to other countries around the world, which explains the increase in tourist population. Unfortunately, there are some exceptions as well such as 2016 and 2020.
+  After the plane crash at the end of 2015, Russia-Turkey relations were damaged and some restrictions enforced. Visa-free travel was not allowed, agricultural products were boycotted and restrictions were imposed on Turkish companies. That is the indicators of the tension between Turkey-Russion diplomatic relationships.
+  A worse decrease than 2016 occurred in 2020. Borders were closed due to the Covid19 pandemic, in some months almost no tourists came to Turkey in 2020.
+  
+  
+### Comparison of Search Volume of "Antalya" in Russia with Number of Russian Tourists visiting Turkey
+  
+
+  
+  
+```{r , echo=FALSE}
+
+antalya= read.csv("antalya.csv")
+date= Dataframe$Date
+trend=antalya[-1,]
+googletrendtable= data.frame(date,trend)
+newgoogle= data.frame(googletrendtable,Dataframe$RussianTourist)
+newgoogle$trend= as.integer(newgoogle$trend)
+newgoogle$trend= newgoogle$trend*10000
+
+dk <- newgoogle %>%
+  select(date, trend, Dataframe.RussianTourist) %>%
+  gather(key = "Categories", value = "Scale", -date)
+
+
+ggplot(dk, aes(x = date, y = Scale)) + 
+  geom_line(aes(color = Categories), size = 1) +
+  scale_color_manual(values = c("light steel blue", "rosy brown")) +
+  theme_minimal()
+
+```
+
+  In this example, the word chosen from Google Trends is "Antalya", which is a favorite destination for Russian people. By looking at the line plot of the search volume and the data above, it can be said roughly that these are highly related to each other. The main reason is that tourists investigate the places they will visit in detail before arriving. They both arrange the place to stay and also plan the routes to visit in advance. This preparation also explains that the search volume follows the number of tourists one or two months behind. That is a tourist arranges his/her accommodation and then comes to visit to Turkey after few months. 
+  Although there is no perfect match between tourist and Google data chosen, the key features (seasonal structure, similar decreasing patterns due to political tension in 2016 and pandemic in 2020) are so similar. Since Antalya is not the only city Russians visit, it is normal that there are some anomalies.
+  
+  
+## Example 3: Monthly Number of House Sales in Turkey between 2014-2021
+  Accommodation, one of the most basic needs of humanity, has turned from a need to a luxury as the days pass. Living in a sustainable home raises our living standards in these days when we run our daily routine from home due to _Covid19_. It is a good idea to analyze the number of house sales in Turkey to gain insight about Turkey's Real Estate Market.
+
+  After necessary manipulation, first five observations in 2014 with column names "Date" & "HouseSales" can be seen as:
+
+```{r head3, echo=FALSE}
+head(Dataframe3,5)
+```
+### Plot of Monthly Number of House Sales in Turkey between 2014-2021 
+
+
+```{r lineplot3, echo=FALSE}
+
+ggplot(Dataframe, aes(x=Date, y=HouseSales)) +
+  geom_line(color = "black", size = 1, aes(group=1),linetype="solid") +
+  labs(x = "Date",
+       y = "House Sales") +
+  scale_x_date(date_breaks = "6 months") +
+ theme(axis.text.x = element_text(angle = 60,vjust=1,hjust=1,color="black")) +
+  theme(axis.text.y = element_text(angle = 0,vjust=1,hjust=1,color="black")) +
+  labs(title = "Number of House Sales in Turkey", subtitle = "Between 2014-2021 counted Monthly") +
+  theme(panel.background = element_rect(fill = "rosy brown"))
+
+
+```
+  
+  
+  When we roughly examine the graph above, we can see an increasing trend, although it is not clear. We can say that as time passes, it becomes more attractive to own a house in Turkey. With some exceptions, this data has a cyclic pattern. A modest increase in spring months is accompanied by a sharp decrease in summer months and a sharp increase in December. An example of this pattern can be observed easily in statistics of 2015.  
+
+
+```{r housesalesin2016 , echo=FALSE}
+
+ggplot(Dataframe[13:26,], aes(x=Date, y=HouseSales)) +
+  geom_line(color = "black", size = 1, aes(group=1),linetype="solid") +
+  labs(x = "Date",
+       y = "House Sales") +
+  scale_x_date(date_breaks = "1 months") +
+ theme(axis.text.x = element_text(angle = 60,vjust=1,hjust=1,color="black")) +
+  theme(axis.text.y = element_text(angle = 0,vjust=1,hjust=1,color="black")) +
+  labs(title = "Number of House Sales in Turkey in 2015") +
+  theme(panel.background = element_rect(fill = "rosy brown"))
+
+
+```
+   
+   While the reason for the increase in spring months may be the tendency of people to buy summer houses in cities such as İzmir and Antalya, the reason for the significant increase at the end of the year may be economic reasons. That is the arrangements in the beginning of new year may make it more attractive for people to buy a house at the end of the year. Buying and selling tax discount rates may change periodically and this change may explain the peaks at the end of the year. In addition, large housing firms provide discounts during the last months of the year to meet their year-end targets.
+    The annual pattern observed in many years deteriorated in 2019 and 2020. The number of house sales, which was very high in December 2019, reached the lowest points rapidly due to Covid-19. In order to refresh the Turkish economy, especially public banks started to give low-interest housing credits. Thanks to this policy, which makes borrowing less costly, number of house sales reaches the top level in July 2020, which is 229357.
+    This positive picture may be disappeared due to the virus effect, the unsustainability of low-interest loans, the appreciation of foreign currency against Turkish Lira and high inflation, which end up with only 70587 sales in January 2021.
+    
+### Comparison of Search Volume of "Satılık" in Turkey with Number of House Sales in Turkey    
+    
+```{r "Satılık" , echo = FALSE}
+Satılık= read.csv("Satılık.csv")
+date= Dataframe$Date
+trend=Satılık[-1,]
+googletrendtable= data.frame(date,trend)
+newgoogle= data.frame(googletrendtable,Dataframe$HouseSales)
+newgoogle$trend= as.integer(newgoogle$trend)
+newgoogle$trend= newgoogle$trend*3500
+
+dk2 <- newgoogle %>%
+  select(date, trend, Dataframe.HouseSales) %>%
+  gather(key = "Categories", value = "Scale", -date)
+
+  ggplot(dk2, aes(x = date, y = Scale)) + 
+  geom_line(aes(color = Categories), size = 1) +
+  scale_color_manual(values = c("light steel blue", "rosy brown")) +
+  theme_minimal()
+
+
+```
+
+  In this example, the word chosen from Google Trends is "Satılık", which seems to be a relevant word with house sales statistics in Turkey. By looking at the the line plot of the search volume and the data above, it can be said roughly that these are highly related to each other. 
+Simultaneous increases and decreases explain the positive correlation between them. For example, the peak in July 2020 is easily seen in the search volume of "Satılık". There is not as much overlap as observed in the previous example (Antalya and Russian Tourists), the reason may be that the word of "Satılık" represents a more general concept than house sales. Obviously, some anomalies are acceptable and a more detailed analysis can yield a better conclusion. 
+
