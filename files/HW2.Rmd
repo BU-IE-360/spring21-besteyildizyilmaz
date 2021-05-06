@@ -341,7 +341,7 @@ ggplot(data=Mortgage[97:100],aes(x=Date))+geom_line(aes(y=Konut,color='real')) +
 [Wikipedia](https://en.wikipedia.org/wiki/Mortgage_loan)
 
 ## 6. Appendices
-[Here]() the relevant R Markdown File.
+[Here](https://bu-ie-360.github.io/spring21-besteyildizyilmaz/files/HW2.Rmd) the relevant R Markdown File.
 
 
 
