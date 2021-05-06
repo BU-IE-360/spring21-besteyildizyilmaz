@@ -1,0 +1,349 @@
+
+#   Linear Model for Forecasting the Mortgaged Sales in Turkey
+#### _Beste Yıldız Yılmaz - IE360- Spring 21 _
+
+## 1.Introduction
+
+  Accommodation, one of the most basic needs of humanity, has turned from a need to a luxury as the days pass. Since living in a sustainable home raises our living standards, people spend a high proportion of their income to buy a house. There are multiple types of housing sales such as mortgaged, first hand and second hand sales. In this report, mortgaged house sales will be analyzed on a monthly level from _January 2013 to March 2021_.
+  
+  **The research question is that : Which predictors should be used when predicting the number of mortgaged house sales for April 2021? ** 
+
+  The main part of this report is to improve the model by adding and removing some relevant regressors to the model, evaluating residuals and time series regression assumptions. Although it seems reasonable to use data such as _Weighted Average Interest Rates for Housing_ and _Consumer Tendency Survey Questions_, there are other factors as well that can affect people's choice to buy a house. But, our goal here is to find an adequate model for "Mortgaged Sales in Turkey" by avoiding overfitting and to compare our predicted value with actual value of April 2021 when it is announced.
+
+  Note that all data used in this report is from [Central Bank of Turkey’s Data Center](https://evds2.tcmb.gov.tr/index.php?/evds/serieMarket).
+
+## 2.Data Manipulation and Analysis
+  To begin with, "Mortgaged House Sales" data must be imported from EVDS and manipulated in an understandable form. After necessary manipulation, first five observations in 2013 with column names "Date" & "Konut" can be seen as:
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(ggplot2)
+library(data.table)
+require(lubridate)
+library(zoo)
+require(forecast)
+require(GGally)
+require(openxlsx)
+exchange=read.xlsx("EVDS.xlsx",sheet='EVDS')
+Mortgage=read.csv("İpotek.csv")
+InterestData=read.csv("IntData.csv")
+f=read.csv("ff.csv") #saving
+
+Date=Mortgage$Date
+Konut=Mortgage$Konut
+Mortgage=data.table(Date=Date,Konut=Konut)
+Mortgage= Mortgage[,Date:=ym(Date)]
+Mortgage= Mortgage[,Date:=as.yearmon(Date,"%Y-%m")]
+Mortgage[,Konut:=as.integer(Konut)]
+
+
+```
+
+```{r echo=T, warning=FALSE}
+head(Mortgage,5)
+```
+### 2.1 Data Visualization
+  Firstly, it would be a good idea to analyze the data to check visually whether there are trend, seasonality or cyclic components. With the help of histogram and line plot, we can get an insight about the mortgaged house sales statistics in Turkey.
+  
+  
+```{r echo=FALSE, warning=FALSE}
+ggplot(Mortgage, aes(x=Konut)) +
+  geom_histogram(aes(y=..density..), colour="darkblue", fill="lightskyblue", bins = 12)+ 
+  geom_density(alpha=.2, fill="purple", colour="brown") +
+  labs(title = "Histograms of Mortgaged Sales in Turkey", 
+       x = "Number of Mortgaged House Sales",
+       y = "Density") 
+```
+
+
+  The histogram above indicates that the mortgaged house sales statistics seem to be distributed to a normal distribution. On the other hand, there are some outliers as well in large number of house sales.
+
+
+
+```{r plot1, echo=FALSE, warning=FALSE}
+ggplot(Mortgage, aes(x=Date, y=Konut)) +geom_line(color="darkblue") + geom_point() +
+  labs(title = "Number of Mortgaged Sales in Turkey", subtitle = "Between 2013-2021 counted Monthly",x = "Date",y = "Mortgaged Sales") 
+
+```
+ 
+ 
+*  It can be easily seen that, from 2013 to beginning of 2018, there are many up and downs around a constant level (35000). On the other hand, during 2018, a decreasing trend can be captured easily. One of the main reasons for this decrease in the number of mortgaged sales might be the economic contraction in 2018. That is increasing unemployment and inflation negatively affect house sales, which can be clearly seen in the line plot above.
+*  In 2019, there is a sharp increase in contrast to 2018. The main reason for this is a decrease in the interest rate from the Central Bank and private banks.
+*  In addition to these anomalies, the year 2020 was marked by a pandemic. In first months of 2020, house sales had fallen considerably due to serious health concern. To increase this anomaly, policy changes were made. Especially in public banks, long-term and low-interest housing credits have brought mortgage sales to 130000 in July of 2020. But after middle of 2020, due to the deterioration of the economic data and changes in the exchange rate, the positive picture has hit the bottom levels.
+*  When we look at the bigger picture, a slight decreasing trend is captured, although it may not be obvious. For this data, we cannot talk about apparent seasonality or cyclic structure. That is people take a loan from the bank and buy a house are not considerably affected by month. However, we will look at "Autocorrelation function" later to detect whether there is seasonality or not.
+
+
+### 2.2 Linear Model Steps
+
+  After visually reviewing mortgage sales, the regressors required to build our model should be investigated. 
+  After examining some data such as survey statistics, exchange rates and interest rates in EVDS, the variables that appear in this report regarding sales are seen in the table below. 
+  For now, three relevant independent variables are:
+  
+* Weighted Average Interest Rates For Banks Loans- Housing
+* The probability of saving over the next 12 months (Seasonally Unadjusted Consumer Confidence Index and Indices of Consumer Tendency Survey Questions)
+* Exchange Rates:US Dollar(Buying)
+
+```{r manip, echo=FALSE, warning=FALSE}
+f=f$x
+Mortgage[,Savings:=as.numeric(f)] # adding Savings survey
+Date2=InterestData$Date
+Interest=InterestData$Interest
+Interestdata= data.table(Date=Date2, Interest=Interest)
+Interestdata= Interestdata[,Date:=dmy(Date2)]
+Interestdata[,Interest:=as.numeric(Interest)]
+Interestdata[,Month:=as.character(month(Date,label=T))]  #adding months
+Interestdata[,Year:=as.character(year(Date))]
+Interestdata$Date=paste(Interestdata$Year,Interestdata$Month)
+NewData=Interestdata[,list(Interest= mean(Interest)),by=list(Date)]
+Mortgage[,Interest:=NewData$Interest] # adding interest
+
+Mortgage[1:99,Exchange:=exchange$TP.DK.USD.A.YTL] # adding exchange rate
+
+
+```
+
+First observations of merged data can be seen as:
+
+```{r echo=T, warning=FALSE}
+head(Mortgage,5)
+```
+
+```{r, echo=T, warning=FALSE}
+ggpairs(Mortgage[,.(Konut,Savings,Interest,Exchange)])
+```
+  
+  It is seen above that while there is a strong correlation between mortgaged house sales and interest rate, we cannot talk about such a correlation for savings or exchange rate. When we check visually Mortgaged Sales vs Exchange rate, there are many uncorrelated behaviours, which is the reason why exchange rate will not be used as an independent variable in this report. But putting survey results into our model and evaluating them afterwards may give more accurate results.
+  
+  So, in this report, we will use independent variables mentioned above except "Exchange Rate".
+  
+  After correlation analysis, everything is ready to start the model.
+ 
+ 
+```{r, echo=FALSE, warning=FALSE}
+
+Mortgage[,Year:=year(Date)] # adding year
+
+Mortgage[,Month:=as.character(month(Date,label=T))] # adding month
+
+Mortgage[,Trend:=1:.N]  # adding trend
+
+Mortgage[Date=="2020-07-01",July:=1]
+Mortgage[is.na(July)==T,July:=0] # adding july 2020
+Mortgage[,July:=as.factor(July)]
+```
+
+ 
+#### 2.2.1 Trend Component
+ 
+ 
+ Although there is no obvious trend in the relevant data, fitting a trend is a good step to start to a time series regression. For this step, only variable which is used is _trend_. Summary of linear model can be seen as:
+  
+```{r trend, echo=T, warning=FALSE}
+lm_trend=lm(Konut~Trend,Mortgage)
+summary(lm_trend)
+
+```
+  As we observed in data visualization step, trend did not come out as a significant variable. The F-statistic's p value is quite high, which shows that our model is not meaningful. Also, negative 'Adjusted R2' appears when residual sum of squares approaches to the total sum of squares, that is explanation towards response varible is very very low.
+  
+  For now, we will continue with the trend component because as the model improves it might become an important variable. It is possible to see the trend component visually as well:
+
+```{r besti, echo=FALSE, warning=FALSE}
+Mortgage[,predict1:=predict(lm_trend,Mortgage)]
+Mortgage[,Residual:=Konut-predict1]
+color= c(real="darkred",trend="black")
+ggplot(data=Mortgage,aes(x=Date))+geom_line(aes(y=Konut,color='real')) +
+  geom_line(aes(y=predict1,color='trend')) +
+  scale_color_manual(values = color)
+```
+
+#### 2.2.2 Trend + Month Components
+
+  When we look at "Autocorrelation function" below, there are larger values than values of dashed line at lag 12. So, as a second step, the annual seasonality component can be added to the previous model.
+ 
+```{r, echo=T, warning=FALSE}
+ggAcf(Mortgage$Konut)+ggtitle("AutoCorrelation Function")
+```
+ 
+```{r, echo=T, warning=FALSE}
+lm_trend_month=lm(Konut~Trend+Month,Mortgage)
+summary(lm_trend_month)
+```
+  Seasonality, which was not observed during data visualization, did not provide an improvement in the model. That is an increse in 'Residual Standard Error' is captured by comparing models. In this step, there is no need to check residuals since our first aim is to find some relevant regressors.
+  
+ Therefore, the month information should be removed from the model.
+
+#### 2.2.3 Trend + Interest Rate 
+  The regressors we have tried so far have been time-based, yielding results that are far from a valid model. At this point, we need some relevant predictors.
+ 
+  It is a well-known fact that low interest rates for housing loans can increase demand for homes, while high interest rates might slow demand. In the light of this information, this macroeconomic balance should have a significant impact on the number of mortgaged house sales in Turkey.
+  
+  Before we add it to our model, it might be a crucial step to see how our previous model's residuals are explained by "Weighted Average Interest Rates For Banks Loans- Housing".
+
+```{r, echo=FALSE,warning=FALSE}
+ggplot(Mortgage,aes(x=Interest,y=Residual))+geom_point()+geom_smooth(method="lm", color="darkred") 
+
+```
+
+  As seen in the "Residual vs Interest Plot" above, residuals and interest rate are highly correlated each other. As interest rate increases, residual values move away from zero mean and reach to negative values linearly. That is while our model underestimates house sales in time with low interest rate, it overestimates house sales in time with high interest rate levels.
+  
+  Due to this significant negative correlation, it is logical to continue our model with "Weighted Average Interest Rates For Banks Loans- Housing". Note that this is a weekly data but it is converted to monthly level after some manipulations.
+
+```{r be, echo=T, warning=FALSE}
+
+lm_trend_interest=lm(Konut~Trend+Interest,Mortgage)
+summary(lm_trend_interest)
+```
+
+  It is clear that the p-value of the F statistic has dropped significantly, and this is an indicator that we have a good model. After the F test, the coefficients part of the table should be checked. Looking at the p values of Intercept, Trend and Interest; it can be seen that they are all important variables for the model.
+  
+  When we look at the Adjusted R2 value, we see that it is still not very good. At this point, it may be a good idea to do residual analysis.
+  
+```{r, echo=FALSE, warning=FALSE}
+checkresiduals(lm_trend_interest)
+```
+  Residuals seem to meet the zero mean assumption, but there is an increasing variance towards the right of the graph. This situation breaks the constant variance assumption. The reason for this is very likely the pandemic effect. When we look at the autocorrelation plot, it appears to be high in lag 1. Other lags do not seem problematic. Lastly, when we look at the distribution of residuals, although we say that they roughly follow normal distribution, there are some anomalies on the right and left that disrupt this normality.
+  
+  Since residuals are highly autocorrelated at lag 1, we can use lagged residual values as a parameter in our new model.
+
+#### 2.2.4 Trend + Interest Rate + Lag 1
+  
+```{r, echo=F, warning=FALSE}
+Mortgage = Mortgage[,Lag:=NULL]
+Mortgage$Lag[1]<- NA
+Mortgage$Lag[2:99] = residuals(lm_trend_interest)[1:98]
+```
+
+```{r, echo=T, warning=FALSE}
+lm_trend_interest_lag=lm(Konut~Trend+Interest+Lag,Mortgage)
+summary(lm_trend_interest_lag)
+checkresiduals(lm_trend_interest_lag)
+
+```
+
+  Now we have a better Adjusted R2 value. There is no problem in the p value of the lag parameter. While the increasing variance towards the right of the graph is less than the previous model, there are still problems in lag 1 and lag 2. But when we look at the improving in "Residual standard error", it seems like a good idea to continue with lag parameter.
+
+  When we evaluate "the model we have done so far" and "actual values" on the same plot, we see good results: 
+
+```{r trendint, echo=FALSE}
+
+Mortgage[,Predict2:=predict(lm_trend_interest_lag,Mortgage)]
+Mortgage[,Residual2:=Konut-Predict2]
+ggplot(data=Mortgage,aes(x=Date))+geom_line(aes(y=Konut,color='real')) +
+  geom_line(aes(y=Predict2,color='trend')) +
+  scale_color_manual(values = color)
+
+```
+
+#### 2.2.5 Trend + Interest Rate + Lag 1 + Savings
+
+  While setting up the mortgage house sales model, it is a valid method to use surveys because survey results are important indicators of people's habits. The survey used in this report is the probability of saving over the next 12 months, which is collected monthly.
+  
+  
+```{r, echo=FALSE, warning=FALSE}
+ggplot(Mortgage,aes(x=Savings,y=Residual2))+geom_point()+geom_smooth(method="lm", color="darkred")
+```
+
+  Before adding Savings as an independent variable, "Residuals vs Savings Scatter Plot" should be analyzed. It shows us how our residuals can be explained by this survey. Luckily, residuals and savings seem to have a negative relationship and incorporating savings data into our linear model will help us yield better estimates:
+
+```{r, echo=T, warning=FALSE}
+lm_trend_interest_lag_savings=lm(Konut~Trend+Interest+Lag+Savings,Mortgage)
+summary(lm_trend_interest_lag_savings)
+checkresiduals(lm_trend_interest_lag_savings)
+```
+ 
+  The increase in the Adjusted R2 value made our estimates correct and offered a better model. Furthermore, there is a slight decrease in residual variance.
+  
+#### 2.2.6 Trend + Interest Rate + Lag 1 + Savings + July
+
+  Although our current model is not bad, we cannot explain the increase in July 2020. Although the main reason for this increase is the decrease in loan rates, our model is insufficient in this regard. Defining this specific month as a dummy variable seems to improve our model significantly.
+
+
+```{r, echo=T, warning=FALSE}
+lm_trend_interest_lag_savings_july=lm(Konut~Trend+Interest+Lag+Savings+July,Mortgage)
+summary(lm_trend_interest_lag_savings_july)
+checkresiduals(lm_trend_interest_lag_savings_july)
+```
+  Luckily, Adjusted R2 value incresed from  0.6345 to 0.7474, which is a nice improvement. When we look at the coefficients parts of table above, all parameters (Trend, Interest, Lag, Savings and July1) are important. Also, whether the residuals assumptions are satisfied or not should be checked.
+  
+  It is obvious that zero mean assumption of residuals are satisfied. The variance increase as we move towards the right, which we have observed since our first model, is also present in this model. The most important reason for this is the blurring brought about by the pandemic. 
+  
+  Different independent variables can be used to get rid of this variance change. But with the pandemic, the fluctuation in the Turkish economy makes this task very difficult.
+  
+  Also, in ACF plot, there is no significant correlation. Lastly, it is clear that no pattern has been found that distorts the residuals' normality assumption.
+  
+  Although we did not see strong correlations in the ACF in our latest model (by checking Breusch-Godfrey test result and by looking at ACF plot), it might be a good idea to draw a "Residuals vs Independent Variable" plot to verify that there are randomness. Also, there is no inconsistent pattern between Fitted Values and Final Residuals, which is a good point to stop.
+  
+```{r july, echo=FALSE, warning=FALSE}
+
+Mortgage[,predict4:=predict(lm_trend_interest_lag_savings_july,Mortgage)]
+Mortgage[,FinalResiduals:=Konut-predict4]
+p1=ggplot(Mortgage,aes(x=Savings, y=FinalResiduals)) + geom_point() +labs(y = " Final Residuals")  
+p2=ggplot(Mortgage,aes(x=Interest, y=FinalResiduals)) + geom_point() +labs(y = " Final Residuals")  
+p4=ggplot(Mortgage,aes(x=predict4,y=FinalResiduals))+geom_point()+labs(x = "Fitted Values", y = " Final Residuals") 
+gridExtra::grid.arrange(p1,p2,p4,nrow=1)
+```
+  
+  The summary of what we have done so far is shown in the line plot below. The plot reveals that, the model has a good fit. Although our model cannot make very good predictions in early 2020, when the pandemic was appeared, this model is satisfactory for us.
+
+```{r, echo=FALSE, warning=FALSE}
+ggplot(data=Mortgage,aes(x=Date))+geom_line(aes(y=Konut,color='real')) +
+  geom_line(aes(y=predict4,color='trend')) +
+  scale_color_manual(values = color)
+
+
+
+
+```
+
+## 3. Forecast for 2021-04
+
+  After we have developed a good model of Mortgaged House Sales in Turkey, our aim is to provide a forecast of 2021-04 so that we will check our prediction error later when 2021-04 statistics are announced. Since our regressors (Savings and Interest Rate) are not available in 2021-04, it might be a good idea to use the mean of values of year 2021. That is, the interest rate in 2021-04 will be put into model as the mean of first three months of 2021's data, which is also same for savings.
+  
+  There is no need to make such effort for other parameters such as trend or dummy variable for July 2020. These are straightforward to complete.
+
+  After these forecasting steps, our "Mortgaged Sales Forecast for 2021-04" is below and also the forecasted value can be seen in the line plot as well. 
+```{r, echo=T,warning=FALSE}
+Mortgage=rbind(Mortgage,data.table(Date=as.yearmon("2021-04-01")),fill=T) 
+Mortgage[is.na(Trend)==T,Trend:= 100]
+Mortgage$Lag[100] = residuals(lm_trend_interest)[99]
+Mortgage$July[100]=as.factor(0)
+Mortgage$Interest[100]=mean(Mortgage[97:99]$Interest)
+Mortgage$Savings[100]=mean(Mortgage[97:99]$Savings)
+Mortgage[is.na(predict4)==T,predict4:=predict(lm_trend_interest_lag_savings_july,Mortgage[is.na(predict4)==T])]
+
+
+```
+```{r,echo=FALSE}
+print(Mortgage$predict4[100])
+```
+  
+  
+```{r,echo=FALSE, warning=FALSE}
+ggplot(data=Mortgage[97:100],aes(x=Date))+geom_line(aes(y=Konut,color='real')) +
+  geom_line(aes(y=predict4,color='trend')) +
+  scale_color_manual(values = color)
+```
+
+
+## 4. Conclusion
+ 
+ In this report, an acceptable model was constructed for the purpose of predicting the mortgage sales in April 2021. By interpreting the values in the "Summary function" and checking the residuals, we were able to build a better model step by step. In addition to the use of time-based parameters such as months, macroeconomic statistics that can have an impact on house sales were also included. 
+ 
+ It should not be forgotten that there may also be independent variables that can affect the dynamics of mortgaged house sales in Turkey and make our predictions more reliable. However, our aim here is to reach a sufficient and acceptable point by using time series regression techniques as opposed to finding excellent forecasts.
+ 
+## 5. References
+[EVDS](https://evds2.tcmb.gov.tr/)
+
+[Wikipedia](https://en.wikipedia.org/wiki/Mortgage_loan)
+
+## 6. Appendices
+[Here]() the relevant R Markdown File.
+
+
+
+
+
