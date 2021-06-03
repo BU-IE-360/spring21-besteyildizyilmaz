@@ -1,0 +1,401 @@
+
+# Turkish Electricity Consumption Data
+#### _Beste Yıldız Yılmaz - IE360- Spring21 _
+
+## 1.Introduction
+  In this report, electricity consumption data in Turkey will be used and then forecasts will be made based on models. This data is available in EPİAŞ. This hourly data is from 1st of January, 2016 up to the 20th of May, 2021. After the necessary analyzes to make the electricity consumption data stationary as much as possible, Autoregressive (AR) and Moving Average (MA) models will be established by taking these analyzes into account. Also, the ARMA model considered to be the best will be selected and hourly forecasts will be made for the upcoming 14 days (from 6th of May until 20th of May in 2021). Finally, bias analysis will be made by comparing it with actual values.
+
+## 2.Data Visualization & Stationarity Analysis
+  Our hourly data from EPİAŞ which we have manipulated to get started is as follows:
+
+```{r beste,echo=F,warning=FALSE,include=FALSE}
+#install.packages("lubridate")
+#install.packages("forecast")
+library(lubridate)
+library(data.table)
+library(ggplot2)
+require(urca)
+library(forecast)
+Consumption=fread('/Users/besteyildizyilmaz/Desktop/IE425/Consumptionyeni.csv')
+Newdate=as.Date(Consumption$Date,format="%d.%m.%Y")
+Consumption$Date=Newdate
+Consumption$`Consumption (MWh)`<- as.numeric(gsub(",","",Consumption$`Consumption (MWh)`))
+Consumption[,DateHour:=paste(Date,Hour)]
+Consumption[,Time:=as.POSIXct(DateHour, format= "%Y-%m-%d %H:%M" ,tz="UTC")]
+setnames(Consumption, "Consumption (MWh)", "Consumption")
+```
+
+```{r}
+head(Consumption[,c("Time","Consumption")],7)
+```
+
+ To better understand our data, we can draw a time-series plot and take a closer look at our consumption values. While the plot below may seem overly complex, it's a good first step to gain an overall impression.
+```{r plot1}
+ggplot(data=Consumption,aes(x=Time,y=Consumption))+geom_line(col = "dark red",alpha=0.6)+
+  labs(title = "Electricity Consumption in Turkey", subtitle = " From 1st of January, 2016 till the 20th of May, 2021") 
+```
+  
+  Visualization is important to recognize patterns before modeling. At first glance, increases are noticeable during the summer months.
+Although there are increases in winter months, it is not as much as summer months. Decreases in spring and autumn are among the first things to notice. The abnormality in the spring of 2020 was also caused by Covid-19. Lockdowns have deteriorated the overall pattern. The reason may be that the factories stopped production. Also, a slight increasing trend is seen above, which is the outcome of increasing population and production levels.
+  In addition, some spikes (low consumption values) are seen in couple of dates.These dates coincide with religious holidays(Ramadan + Sacrifice Festival). In addition to those holidays, decreases are also seen on April 23 and May 19 and in new years.
+  
+  When we examine the effect of seasonal changes throughout 2018 as an example, it can be seen more easily that the increase in summer and winter months is accompanied by a decrease in spring and fall months. In addition, the decrease in the Ramadan in late June and the Sacrifice festival in the beginning of September can be clearly seen.
+ 
+```{r plot2,echo=F}
+ggplot(data=Consumption[Date<"2018-01-01" & Date>="2017-01-01"],aes(x=Time,y=Consumption))+geom_line(col="dark red",alpha=0.8)
+
+```
+ 
+  Because of all these details we have mentioned, our data is not stationary. In addition to the visual check, high values in ACF indicate nonstationary behavior.
+ 
+```{r ,echo=F}
+plot(acf(Consumption$Consumption, lag.max = 20,plot=FALSE),main=" ", xlab="Lag") 
+```
+
+  Another way of checking stationarity is by KPSS test as follows:
+```{r}
+test=ur.kpss(Consumption$Consumption)
+summary(test)
+```
+  As expected, "Value of test-statistic" is greater than the critical values. This means that our data is nonstationary. One of our main tasks here is to obtain as much stationary data as we can. Then we will try to build AR and MA models with our stationary data.
+  We will try to decompose and interpret our data at different (hourly, daily, weekly, monthly) levels with the "decompose()" function, which will guide us in obtaining stationary data. It should be noted that the detrending and deseasonalizing operations produce the same results when done manually. So we will continue with the decompose function.
+
+## 3.Decomposition of Data at Different Levels
+
+
+### 3.1.Hourly Level
+  What we want to try is whether there is a pattern in every 24 values (hourly) or not. To try this, it is necessary to create a time series object with a frequency value of 24.
+  
+```{r}
+Consumption_ts=ts(Consumption$Consumption,freq=24)
+```
+
+  When we visually check the hourly data, we do not see an increasing variance, so it would be correct to use the default additive type instead of multiplicative. When we insert the time series object into the decompose function, we encounter 3 new plots. These are trend-cycle, seasonal and remainder component.
+Trend-cycle component captures trend and cyclic component because it uses moving average. When we remove the trend-cycle component from the time series object, the mean of hours is easily calculated and a value for each hour is found. Afterwards, the part formed by subtracting this value becomes the random component. The aim is to see a stationary data here.  
+```{r warning=FALSE,echo=F}
+Consumption_decomposed=decompose(Consumption_ts)
+plot(Consumption_decomposed)
+Consumption[,Trend:=as.integer(Consumption_decomposed$trend)]
+Consumption[,Seasonal:=as.integer(Consumption_decomposed$seasonal)]
+
+```
+  
+  The trend-cycle component graphic above shows the overall movement in the series, ignoring the seasonality and any small random fluctuations. Also, since we use the classical decomposition method, the seasonal component repeats every 24 hours because it is calculated by taking the average. In the graph above, it is not understood due to the large number of data. We will show these components separately, soon.
+  
+```{r warning=FALSE,echo=F}
+t1=ggplot(data=Consumption,aes(x=Time,y=Trend))+geom_line()+labs(y="Frequency=7")
+```
+
+```{r,echo=F}
+s1=ggplot(data=Consumption[1:(24*2)],aes(x=Time,y=Seasonal))+geom_line()+labs(y="Frequency=7")+geom_point()
+```
+### 3.2.Daily Level
+  What we want to try is whether there is a pattern in every 7 days or not. To try this, it is necessary to create a time series object with a frequency value of 168.
+```{r}
+Consumption_ts_168=ts(Consumption$Consumption,freq=168)
+```
+ 
+```{r message=FALSE, warning=FALSE,echo=F}
+Consumption_decomposed_168=decompose(Consumption_ts_168)
+plot(Consumption_decomposed_168)
+Consumption[,Trend_168:=as.integer(Consumption_decomposed_168$trend)]
+Consumption[,Seasonal_168:=as.integer(Consumption_decomposed_168$seasonal)]
+trend_168=Consumption[!is.na(Trend_168),Trend_168]
+m=auto.arima(trend_168, seasonal=F, stepwise=F, approx=F)
+trend_forecast=forecast(m, h=84)
+Consumption[,Trend_168:=ts(Trend_168)]
+Consumption[(.N-83):.N, Trend_168:=trend_forecast$mean]
+```
+
+```{r warning=FALSE,echo=F}
+t2=ggplot(data=Consumption,aes(x=Time,y=Trend_168))+geom_line()+labs(y="Frequency=7*24")
+```
+
+```{r,echo=F}
+s2=ggplot(data=Consumption[1:(168*2)],aes(x=Time,y=Seasonal_168))+geom_line()+labs(y="Frequency=7*24")+geom_point()
+```
+
+### 3.3. Monthly Level
+  What we want to try is whether there is a pattern in every 12 months or not. To try this, it is necessary to create a time series object with a frequency value of 8736 (24* 7 *52).
+```{r}
+Consumption_ts_8736=ts(Consumption$Consumption,freq=(24*7*52))
+```
+
+
+```{r,echo=F}
+Consumption_decomposed_8736=decompose(Consumption_ts_8736)
+plot(Consumption_decomposed_8736)
+Consumption[,Trend_8736:=as.integer(Consumption_decomposed_8736$trend)]
+Consumption[,Seasonal_8736:=as.integer(Consumption_decomposed_8736$seasonal)]
+```
+
+```{r,echo=F}
+t3=ggplot(data=Consumption,aes(x=Time,y=Trend_8736))+geom_line()+labs(y="Frequency=7*24*52")
+```
+
+```{r,echo=F}
+s3=ggplot(data=Consumption[1:(8736*2)],aes(x=Time,y=Seasonal_8736))+geom_line()+labs(y="Frequency=7*24*52")+geom_point()
+```
+
+
+### 3.4. Comparison of Different Levels
+#### 3.4.1. Trend-cycle Component Comparison
+  By plotting trend-cycle component for three different frequency level, different structures appear. As frequency increases, trend component becomes smoother. While trend component captures more detailed movements in original data at low frequency values, linear component becomes more like a linear trend as frequency value gets higher.
+
+```{r message=FALSE, warning=FALSE}
+gridExtra::grid.arrange(t1,t2,t3,nrow=3)
+```
+
+#### 3.4.2. Seasonal Component Comparison
+  In addition to trend-cycle component, different seasonal components appear as well. By looking at first plot, it is easy to detect that consumption, which increases from 6 a.m. until noon, continues to decrease after 8 p.m. until the next 6 a.m. That is, high consumption during the daytime is accompanied by low consumption at night.
+  By looking at second plot, we can comment about the effect of the day on consumption.Compared to weekdays, the consumption is low at weekends. It can be said that sundays have the least consumption of the week. The most clear reason for this is that most workplaces have a holiday on Sunday.
+  Lastly, last plots indicates the month effects on consumption.This temperature-driven change is clearly visible. The high consumption value in summer and winter months, when the temperature reaches minimum and maximum values, is accompanied by decreasing values in spring and fall. Also, while summer consumption values are higher compared to winter months, the difference between fall and spring is not that obvious in this plot.
+
+```{r}
+gridExtra::grid.arrange(s1,s2,s3,nrow=3)
+```
+
+
+## 4.Decomposed Data with Frequency=7*24
+
+  For rest of this report, we will continue with the decomposed data with frequency=(7*24).That is we think that both the hour and the day of the observation define the seasonality of our data. For example, it is expected that the consumption values of 12 p.m. on all sundays should be similar to each other.
+  
+  Thanks to "decompose() function", we can easily decompose the original series at frequency equals (7 * 24) as follows:
+  
+```{r message=FALSE, warning=FALSE}
+t2=ggplot(data=Consumption,aes(x=Time,y=Trend_168))+geom_line()+labs(y="trend-cycle")
+s2=ggplot(data=Consumption[1:(168*2)],aes(x=Time,y=Seasonal_168))+geom_line()+labs(y="seasonal")+geom_point()
+Consumption[,Random_168:=as.integer(Consumption_decomposed_168$random)]
+r2=ggplot(data=Consumption,aes(x=Time,y=Random_168))+geom_line()+labs(y="random")
+gridExtra::grid.arrange(t2,s2,r2,nrow=3)
+```
+  
+  As we said before, seasonal component and trend component tell us those important features:
+
+* Compared to weekdays, the consumption is low at weekends. It can be said that sundays have the least consumption of the week.
+* Consumption, which increases from 6 a.m. until noon, continues to decrease after 8 p.m. until the next 6 a.m. That is, high consumption during the daytime is accompanied by low consumption at night.
+  Also, when we focus on random component, although it is not perfectly random,there are similar behaviors to randomness.The random component will be explored in more detail as we progress through the report.
+  
+```{r warning=FALSE}
+ggplot(data=Consumption[1:(7*24*52*2)],aes(x=Time,y=Random_168))+geom_line()+labs(y="random")
+```
+
+## 5.AR Models
+
+  Our aim so far is to obtain a stationary series. After decomposition with frequency 168, it might be a good idea to look at histogram of our new data. Here is the histogram plot: 
+
+```{r message=FALSE, warning=FALSE}
+ggplot(Consumption, aes(x=Random_168)) +
+        geom_histogram(aes(y=..density..), colour="black", fill="black", bins = 10, alpha=0.3)+ 
+        geom_density(alpha=.3, fill="brown", colour="black") +
+        labs(title = "Histogram of Random Data",  x = "Random",y = "Density")
+```
+ 
+  The histogram above indicates that the our data seems to be distributed to a normal distribution. On the other hand, there are some outliers as well. In this report, we will not focus on outlier points. What we know is these outliers overlap with special days such as Ramadan and 31th of December and so on. That is, outlier detection is out of scope of this report.
+  In addition to histogram, KPSS test gives an idea about stationarity of our new data. Here is KPSS test:
+  
+```{r}
+test=ur.kpss(Consumption$Random_168)
+summary(test)
+```
+
+  Since "Value of test-statistic" is small compared to critical values, we can say that our data somewhat stationary and we can continue with this data. Mean of new data seems to equal to zero and there is no increasing or decreasing variance levels. However, it should not be forgotten that it is not a perfect stationary data because there are many outliers. Although some of abnormalies can be explained with special dates, there are also some deviational consumptions which are hard to explain.
+    As we mentioned in introduction, after choosing best model, we will make forecast for upcoming 14 days. Therefore, seperating our data into training and test set is reasonable. While test set will be last 14 days of our original data, training set will be the rest of whole data.
+    
+  Here is the important columns of test set:
+  
+```{r}
+TestSet = Consumption[(.N-335):.N]
+Consumption = Consumption[-((.N-335):.N)]
+Consumption[,random:=Consumption-as.numeric(Trend_168)-Seasonal_168]
+head(TestSet[,c("Time","Consumption")],5)
+
+```
+
+
+  As a next step, It is necessary to study both autocorrelation and partial autocorrelation functions. The reason for that if lags of our series and our forecast errors should be included in the forecasting equation. Here is ACF and PACF plot:
+  
+  
+```{r}
+
+Acf=ggAcf(Consumption$random,lag.max=30)+ggtitle("ACF Function")
+Pacf=ggPacf(Consumption$random,lag.max=30)+ggtitle("PACF Function")
+gridExtra::grid.arrange(Acf,Pacf,nrow=1)
+```
+  
+  There is a practical and useful method for deciding _p_ parameter of AR models. It says that the data may follow an ARIMA (p,d,0) model if ACF and PACF plots show the following patterns:
+* ACF is exponentially decaying or sinusoidal;
+* There is a significant spike at lag p in the PACF, but none beyond lag p.
+  
+  When we analyze ACF plot first, ACF is sinusoidal, which we expect to see such a pattern. In PACF, high values appear in first two lags. Unfortunately, there are also high partial autocorrelation values after lag 15. Especially, there is a very high value in lag 25, which we do not expect to see. The reason might be that we could not obtain an adequate stationary series to work with. In that point, further analysis may be required to find the reasons of such high values in some lags such as lag 25. In those type of cases, we are required to think of SARIMA(p,d,q)(P,D,Q)m models. Because, our data is too long and possess high level of seasonality. So, it is necessary to evaluate seasonal lags and spikes after finding (p,d,q) parameters. But, in this report, we will use ARMA models only. We will ignore seasonal lags and continue with small p values like 2 or 3. Since in large values like (P or Q)=25 ,running process is so time-consuming and even impossible. 
+    We have already realized that there is a significant jump at lag 2 in the PACF, but almost none beyond lag 2. So, it might be a good idea to start with a AR model with p=2.
+  
+### 5.1.AR Model with p=2
+
+```{r}
+model1=arima(Consumption$random, order=c(2,0,0))
+AIC(model1)
+```
+  The AIC value of first model with p=2 is 718446.7. This value is meaningless, it is necessary to compare it with different AR models. A new AR model might be a model with p=3 since checking adjacent p values can give us better AIC values.
+  
+    
+### 5.2.AR Model with p=3
+```{r}
+model2=arima(Consumption$random, order=c(3,0,0))
+AIC(model2)
+```
+
+  Luckily, we have better AIC value, which is (718435.5). So, choosing p value as 3 is reasonable at this point. But, in ARMA model, both p values can be tried since their AIC values are so close to each other.
+  
+  
+## 6.MA Models
+
+  It is the time to find an appropriate MA models. As similar to previous steps in AR models, we can follow it again. There is a practical and useful method for deciding _q_ parameter of MA models. It says that the data may follow an ARIMA(0,d,q) model if ACF and PACF plots show the following patterns:
+ 
+* the PACF is exponentially decaying or sinusoidal;
+* there is a significant spike at lag q in the ACF,but none beyond lag q .
+  
+```{r, echo=F}
+gridExtra::grid.arrange(Acf,Pacf,nrow=1)
+```
+  
+  When we analyze again the ACF and PACF plots, unfortunately, we cannot see such patterns mentioned above at lags up to 30. The reason might be that we have still seasonality in our data. At this point, we can analyze deeply in PACF by increasing lag.max value like that:
+  
+```{r}
+ggPacf(Consumption$random,lag.max=168)+ggtitle("PACF Function")
+```
+  
+  Although it is not clear to see patterns we expect to see, there is a somewhat sinusoidal pattern. However, we cannot conclude that PACF is sinusoidal. In addition to PACF, there is no any threshold q in the ACF. So, our method does not work in such a case. So, what we can do is to try different q values and to choose the best one giving minimum AIC value.
+  
+### 6.1.MA Model with q=0, q=1, q=2 and q=3
+
+```{r}
+model_ma1=arima(Consumption$random, order=c(0,0,0))
+model_ma2=arima(Consumption$random, order=c(0,0,1))
+model_ma3=arima(Consumption$random, order=c(0,0,2))
+model_ma4=arima(Consumption$random, order=c(0,0,3))
+cat(" AIC of q=0:",AIC(model_ma1),'\n',"AIC of q=1:",AIC(model_ma2),'\n', "AIC of q=2:",AIC(model_ma3),'\n', "AIC of q=3:",AIC(model_ma4))
+```
+
+  After four trials, minimum AIC value belongs to a model with q=3. All we know that, it is not a very good approach because what we did so far to find q value is to try different levels but it should be noted that choosing best parameters is not a easy task and it requires so much effort to find it. Although there is function called auto.arima(), we will not use it in this report.
+  
+  
+### 7.ARMA Model
+
+  Up to this point, we have tried to model AR and MA models separately by using different parameters. After that point, our new aim is to build Autoregressive (AR) and Moving Average (MA) models, so called ARMA models. 
+  It should be noted again that electricity consumption data is a very seasonal and long data. Hence, high partial autocorrelation value appears some lags such as lag 25. This refers that SARIMA models can be tried and evaluating seasonal lags might give us better results. However, working with lag values like lag 25 is not easy due to time-consuming issues and also our aim is to build ARMA models. That is, we will continue with a suitable ARMA model.
+  
+#### 7.1. Choosing a Suitable ARMA Model
+ 
+ Although we choose p value as 2 by looking at plots, AIC value comparison prefers us to use p=3. But, it might be good idea to build both of models and choose the one which gives better AIC value.
+
+    
+```{r}
+model_arma1=arima(Consumption$random, order=c(2,0,3))
+model_arma2=arima(Consumption$random, order=c(3,0,3))
+cat(" AIC of p=2 and q=3:",AIC(model_arma1),'\n',"AIC of p=3 and q=3:",AIC(model_arma2))
+```
+  
+  Since the AIC value of the model with q=3 yields better AIC, we will continue with "the ARMA Model with p=3 and q=3". Coefficient of our model is here:
+  
+```{r}
+model_arma2$coef
+```
+
+  Coefficients in above can be summarized as like that:
+  
+* $X_{t}=c+1.024558730X_{t-1}+0.046403527X_{t-2}-0.223138475X_{t-3}+0.298300799ε_{t-1}-0.097743006ε_{t-2}-0.004794452ε_{t-3}$
+
+  After building model, it is recommended to check residuals. We expect them to look like white noise series. Although there are some special dates disturbing overall characteristic of residual data, mean is almost zero and variance is constant. So, we can conclude that our residuals look like white noise.
+  
+```{r message=FALSE, warning=FALSE,echo=F}
+Consumption[,Residuals_final:=model_arma2$residuals]
+ggplot(Consumption,aes(Time))+geom_line(aes(y=Residuals_final))+labs(y="Residuals")
+```
+
+  At this point, actual and fitted values on training set can be evaluated in order to see what we have done so far.
+  
+  
+```{r message=FALSE, warning=FALSE, ,echo=F}
+Model_fitted=Consumption$random-Consumption$Residuals_final
+Model_fitted_transformed= Model_fitted+as.numeric(Consumption$Trend_168)+Consumption$Seasonal_168
+Consumption[,FittedValues:=Model_fitted_transformed]
+color= c(Actual="brown",Fitted="white")
+ggplot(Consumption,aes(x=Time))+geom_line(aes(y=Consumption,color='Actual'))+
+  geom_line(aes(y=FittedValues,color='Fitted'),alpha=0.2) +
+  scale_color_manual(values = color)
+```
+
+## 8.Forecasts
+
+  The plot above seems nice since overall patterns similar to each other. Our new aim is to predict upcoming 14 days (from 6th of May to 20th of May in 2021). It is important to note that before building a model, we required to forecast trend by arima() function in order to not to obtain same values in random components of upcoming 14 days' forecast. By following this step, we will contribute our model a somewhat trend, which reduces the bias.
+ 
+  By using ARIMA model with parameters (3,0,3) and 'forecast()' function, we can easily reach the forecasted values. Here is actual and forecasted values:
+  
+```{r}
+library(forecast)
+random_model=arima(Consumption[,random], order=c(3,0,3))
+TestSet[,random:=forecast(random_model, h=nrow(TestSet))$mean]
+TestSet[,forecast:=random+as.numeric(Trend_168)+Seasonal_168]
+head(TestSet[,c("Time","Consumption","forecast")],10)
+
+```
+  Also, here is the line plot of both actual and forecasted values:
+```{r,echo=F}
+color= c(Actual="brown",Forecasted="dark blue")
+ggplot(TestSet, aes(x=Time)) + 
+  geom_line(aes(y=Consumption, color='Actual')) +
+  geom_line(aes(y=forecast, color='Forecasted')) +
+  scale_color_manual(values = color)
+```
+  
+## 9.Evaluation of Forecast Results
+
+  It is obvious that our forecasts do not match perfectly with actual. Although it catches most of patterns and levels, there are many unexpected behaviors as well in the big picture. The reason might be that our steps are not adequate to model such a long data having a high seasonality. It is obvious that SARIMA models will explain in a good way but in this task, our aim is to come up with an ARMA model.
+ At this point, we need to calculate daily bias and daily mean absolute percentage error for each day of forecasting interval. Finally, we can evaluate the overall performance by using  weighted mean absolute percentage error over forecasted period.
+  In order to calculate daily errors, we should aggregate our hourly data into daily data. Our new daily values are constructed as taking the mean values of each hour of that day. Here is our new data indicating the actual and forecasted values of average consumption of each day of 14 days period:
+  
+  
+```{r}
+Actual_daily=TestSet[,list(Avg_cons1=mean(Consumption)),by=list(Date)]
+Forecasted_daily=TestSet[,list(Avg_cons=mean(forecast)),by=list(Date)]
+(DailyData=data.table(Date=Actual_daily$Date,Actual=Actual_daily$Avg_cons1,Forecasted=Forecasted_daily$Avg_cons))
+
+```
+  Also, line plots are like that:
+  
+```{r,echo=F}
+ggplot(DailyData, aes(x=Date)) + 
+  geom_line(aes(y=Actual, color='Actual')) +
+  geom_line(aes(y=Forecasted, color='Forecasted')) +
+  scale_color_manual(values = color)
+
+```
+  
+  After some calculations, errors can be seen as:
+```{r,echo=F}
+TestSet[,Error:=Consumption-forecast]
+TestSet[,AbsPercErr:=abs(Error/Consumption)]
+TestSet[,Bias:=Error/Consumption]
+Errors = TestSet[,.(Daily_MAPE=sum(AbsPercErr)/24, Daily_Bias=sum(Bias)/24), by=.(Date=Date)]
+Errors
+```
+  While "Daily MAPE" values are calculated as sum of absolute errors divided by 24, Daily Bias values are calculated as sum of hourly bias divided by 24.
+ 
+  In addition to this, we will calculate "Weighted Mean Absolute Percentage Error",a measure of prediction accuracy of a forecasting method. It will give us the overall performance and it will be used for comparing different models. To calculate it, we will use daily aggregated values. Its formula is :
+  
+  ${\displaystyle {\mbox{WMAPE}}={\frac {\sum _{t=1}^{n}\left|A_{t}-F_{t}\right|}{\sum _{t=1}^{n}\left|A_{t}\right|}}}$
+  
+```{r}
+(WMAPE= sum(abs(DailyData$Actual-as.numeric(DailyData$Forecasted)))/sum(abs(DailyData$Actual)))
+```
+## 10.Conlusion
+
+  In this report, a long data with high seasonality was studied. Necessary manipulations were made to better understand the data. One of our first steps is to make our first non-stationary data as stationary as we can. After decomposing at appropriate frequencies, we chose a frequency value and continued with it. We tried to understand the components of these levels.
+  We tried AR and MA models with different parameters and followed them systematically in these trials. Then we set up the ARMA model, made a 14-day forecast and evaluated our model. It should be noted that there are discrepancies in actual and predicted values. As we said before, it would be more appropriate to use the SARIMA model here since our data is very seasonal. But in this report, we have seen how we can adapt the ARMA model to real data.
+
+
+
+
+
+
