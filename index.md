@@ -8,3 +8,6 @@
 
 ## Homework 3
 [Here](files/HW3-beste.html) is my "Forecasting Study of Electricity Consumption Data."
+
+## Project 
+[Here](files/project.html) is our report for the term project.
