@@ -9,5 +9,8 @@
 ## Homework 3
 [Here](files/HW3-beste.html) is my "Forecasting Study of Electricity Consumption Data."
 
+## Homework 4-5
+[Here](files/hw4_5.html) is our "Different Forecasting Strategies for Different Products".
+
 ## Project 
 [Here](files/project.html) is our report for the term project.
